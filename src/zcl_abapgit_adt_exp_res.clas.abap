@@ -57,12 +57,23 @@ CLASS zcl_abapgit_adt_exp_res IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    " Authorization check: user must have display access to the package.
+    " Without this, a missing S_PACKAGE auth would cause a cryptic 500
+    " deep inside abapGit serialization instead of a clean 403.
+    AUTHORITY-CHECK OBJECT 'S_PACKAGE'
+      ID 'DEVCLASS' FIELD lv_package
+      ID 'ACTVT'    FIELD '03'.
+    IF sy-subrc <> 0.
+      response->set_status( cl_rest_status_code=>gc_client_error_forbidden ).
+      RETURN.
+    ENDIF.
+
     " Read optional parameters
     TRY.
         request->get_uri_query_parameter(
           EXPORTING name = 'folderLogic'
           IMPORTING value = lv_folder_logic ).
-      CATCH cx_root.
+      CATCH cx_adt_rest.
         lv_folder_logic = 'PREFIX'.
     ENDTRY.
     IF lv_folder_logic IS INITIAL.
@@ -73,7 +84,7 @@ CLASS zcl_abapgit_adt_exp_res IMPLEMENTATION.
         request->get_uri_query_parameter(
           EXPORTING name = 'mainLanguageOnly'
           IMPORTING value = lv_main_lang ).
-      CATCH cx_root.
+      CATCH cx_adt_rest.
         lv_main_lang = 'false'.
     ENDTRY.
 
@@ -95,6 +106,10 @@ CLASS zcl_abapgit_adt_exp_res IMPLEMENTATION.
           iv_show_log       = abap_false ).
       CATCH cx_root INTO DATA(lx_error).
         response->set_status( cl_rest_status_code=>gc_server_error_internal ).
+        DATA(lo_err_response) = response->get_inner_rest_response( ).
+        DATA(lo_err_entity) = lo_err_response->create_entity( ).
+        lo_err_entity->set_content_type( iv_media_type = 'text/plain' ).
+        lo_err_entity->set_string_data( lx_error->get_text( ) ).
         RETURN.
     ENDTRY.
 
@@ -126,7 +141,7 @@ CLASS zcl_abapgit_adt_exp_res IMPLEMENTATION.
         io_request->get_uri_query_parameter(
           EXPORTING name  = 'package'
           IMPORTING value = lv_package ).
-      CATCH cx_root.
+      CATCH cx_adt_rest.
         RETURN.
     ENDTRY.
 
