@@ -59,26 +59,41 @@ GET /sap/bc/adt/abapgit/export/packages?package={PACKAGE_NAME}&folderLogic={LOGI
 | 404 | Package does not exist |
 | 500 | Serialization error |
 
-**Note:** ADT endpoints require a CSRF token. Fetch one first:
-```
-GET /sap/bc/adt/discovery  (with header: x-csrf-token: fetch)
-```
-Then pass it on the export request as `x-csrf-token: <token>`.
+**Note:** This is a read-only GET endpoint. No CSRF token is required.
 
 ### Example with curl
 
 ```bash
-# Fetch CSRF token
-TOKEN=$(curl -sk -u user:pass "https://host:port/sap/bc/adt/discovery?sap-client=100" \
-  -H "Accept: application/atomsvc+xml" -H "x-csrf-token: fetch" -D - 2>/dev/null \
-  | grep -i x-csrf-token | awk '{print $2}' | tr -d '\r')
-
-# Export package
+# Export a single package
 curl -sk -u user:pass \
   "https://host:port/sap/bc/adt/abapgit/export/packages?package=Z_MY_PKG&sap-client=100" \
-  -H "x-csrf-token: $TOKEN" \
+  -o Z_MY_PKG.zip
+
+# Export with options: FULL folder logic, main language only
+curl -sk -u user:pass \
+  "https://host:port/sap/bc/adt/abapgit/export/packages?package=Z_MY_PKG&folderLogic=FULL&mainLanguageOnly=true&sap-client=100" \
   -o Z_MY_PKG.zip
 ```
+
+### What the ZIP contains
+
+The ZIP has a standard abapGit directory structure:
+
+```
+.abapgit.xml                                ← abapGit manifest
+src/
+  package.devc.xml                           ← package metadata
+  zcl_my_class.clas.abap                     ← class source
+  zcl_my_class.clas.xml                      ← class metadata
+  zcl_my_class.clas.testclasses.abap         ← unit tests (if any)
+  zif_my_interface.intf.abap                 ← interface source
+  zif_my_interface.intf.xml                  ← interface metadata
+  z_my_report.prog.abap                     ← report source
+  z_my_report.prog.xml                      ← report metadata
+  ...                                        ← 100+ object types supported
+```
+
+This is the same format that abapGit uses for its "Package to ZIP" feature and for git repositories.
 
 ## Architecture
 
@@ -98,9 +113,8 @@ The calling user needs (typically already granted to any ADT developer):
 
 | Auth Object | Activity | Notes |
 |-------------|----------|-------|
-| `S_ADT_RES` | — | ADT resource access for `/sap/bc/adt/abapgit/export` |
-| `S_DEVELOP` | 03 (Display) | Read access to ABAP objects being serialized |
-| `S_PACKAGE` | 03 (Display) | Read access to the package |
+| `S_ADT_RES` | — | ADT resource access for `/sap/bc/adt/abapgit/export` (checked by ADT framework automatically) |
+| `S_DEVELOP` | 03 (Display) | Read access to ABAP objects being serialized (checked by abapGit's serializers per object type) |
 
 ## Companion: MCP Server
 
